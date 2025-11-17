@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Seller — Auth</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root{ --accent:#059669; --danger:#dc2626; }
+    body{ font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto; background:linear-gradient(180deg,#f7ffef,#f0fff4); min-height:100vh; }
+    .glass{ background: rgba(255,255,255,0.9); backdrop-filter: blur(6px); box-shadow:0 12px 30px rgba(2,6,23,0.06); border-radius:14px; padding:28px; max-width:420px; }
+    .active{ color:var(--accent); border-bottom:3px solid var(--accent); }
+    .input-focus:focus{ outline:none; box-shadow:0 6px 20px rgba(5,150,105,0.08); border-color: rgba(5,150,105,0.6); }
+    .banner {position:fixed; left:50%; transform:translateX(-50%); top:18px; z-index:60; max-width:720px; width:calc(100% - 48px); display:flex; gap:12px; align-items:center; padding:10px 14px; border-radius:10px; box-shadow:0 8px 30px rgba(2,6,23,0.08); opacity:0; pointer-events:none; transition:all .28s ease;}
+    .banner.show{opacity:1; top:28px; pointer-events:auto;}
+    .banner.success{background:linear-gradient(90deg,#ecfdf5,#dcfce7); border:1px solid rgba(16,185,129,0.12); color:#16a34a;}
+    .banner.error{background:linear-gradient(90deg,#fff1f2,#fee2e2); border:1px solid rgba(220,38,38,0.08); color:#dc2626;}
+    .modal-bg {position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(2,6,23,0.45); z-index:50; padding:20px; opacity:0; pointer-events:none; transition:opacity .18s ease;}
+    .modal-bg.show{opacity:1; pointer-events:auto;}
+    .modal-card{width:100%; max-width:520px; border-radius:12px; overflow:hidden; transform:translateY(8px); transition:transform .18s ease;}
+  </style>
+</head>
+<body class="flex items-center justify-center p-6">
+
+  <div id="banner" class="banner" role="status" aria-live="polite"></div>
+
+  <div class="glass">
+    <h1 class="text-2xl font-semibold text-green-700 text-center mb-3">Seller Portal</h1>
+
+    <div id="statusBox" class="text-sm text-center p-2 rounded-md bg-gray-50 text-gray-600 mb-4">Checking connection...</div>
+
+    <div class="flex border-b mb-4">
+      <button id="loginTab" class="flex-1 py-2 active text-center" onclick="switchTab('login')">Login</button>
+      <button id="registerTab" class="flex-1 py-2 text-center" onclick="switchTab('register')">Register</button>
+    </div>
+
+    <form id="loginForm" onsubmit="event.preventDefault(); loginSeller();" class="space-y-3">
+      <input id="loginEmail" type="email" placeholder="Email" required class="w-full p-3 border rounded-lg input-focus" />
+      <input id="loginPassword" type="password" placeholder="Password" required class="w-full p-3 border rounded-lg input-focus" />
+      <button class="w-full py-3 rounded-lg bg-green-600 text-white">Login</button>
+    </form>
+
+    <form id="registerForm" onsubmit="event.preventDefault(); registerSeller();" class="space-y-3 hidden">
+      <input id="regName" required placeholder="Shop Name" class="w-full p-3 border rounded-lg input-focus" />
+      <input id="regEmail" type="email" required placeholder="Email" class="w-full p-3 border rounded-lg input-focus" />
+      <input id="regPassword" type="password" minlength="5" required placeholder="Password" class="w-full p-3 border rounded-lg input-focus" />
+      <button class="w-full py-3 rounded-lg bg-green-600 text-white">Create Account</button>
+    </form>
+
+    <p id="message" class="text-center text-sm mt-4 text-gray-600"></p>
+  </div>
+
+  <div id="modalBg" class="modal-bg" aria-hidden="true">
+    <div class="modal-card bg-white p-6 rounded-xl">
+      <h3 id="modalTitle" class="text-lg font-semibold mb-2">Confirm</h3>
+      <p id="modalDesc" class="text-sm text-gray-600 mb-4"></p>
+      <div id="modalBody"></div>
+      <div class="mt-4 flex justify-end gap-2">
+        <button id="modalCancel" class="px-4 py-2 rounded-lg border">Cancel</button>
+        <button id="modalConfirm" class="px-4 py-2 rounded-lg bg-green-600 text-white">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const APP_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyGnMD2If80YKUEyTgDLVX4hsVwMWXPD6OJt6fy6EzNR1Jpg_2Mz9ImnffGQMXfvMBbNQ/exec';
+
+/* UI helpers */
+function showBanner(text, type='success', timeout=3500){
+  const b = document.getElementById('banner');
+  b.className = 'banner '+(type==='success'?'success':'error')+' show';
+  b.innerHTML = `<div class="text-sm font-medium">${text}</div>`;
+  if(timeout) setTimeout(()=>{ b.className='banner'; }, timeout);
+}
+function setStatus(txt, ok=true){ const el=document.getElementById('statusBox'); el.textContent = txt; el.style.background = ok? '#ecfdf5' : '#fff1f2'; el.style.color = ok? '#065f46' : '#991b1b'; }
+function clearMessage(){ document.getElementById('message').textContent=''; }
+function showInlineMessage(txt, err=false){ const el=document.getElementById('message'); el.textContent=txt; el.style.color = err ? 'crimson' : '#065f46'; }
+
+/* Modal */
+const modalBg = document.getElementById('modalBg'), modalTitle=document.getElementById('modalTitle'),
+      modalDesc=document.getElementById('modalDesc'), modalBody=document.getElementById('modalBody'),
+      modalCancel=document.getElementById('modalCancel'), modalConfirm=document.getElementById('modalConfirm');
+
+function openModal({ title='Confirm', desc='', bodyHtml='', onConfirm=null, confirmText='Confirm' }){
+  modalTitle.textContent = title;
+  modalDesc.textContent = desc;
+  modalBody.innerHTML = bodyHtml || '';
+  modalConfirm.textContent = confirmText;
+  modalBg.classList.add('show');
+  modalConfirm.onclick = ()=>{
+    try{ if(onConfirm) onConfirm(); } catch(e){ console.error(e); }
+    closeModal();
+  };
+  modalCancel.onclick = closeModal;
+  modalBg.onclick = (e)=>{ if(e.target===modalBg) closeModal(); };
+}
+function closeModal(){ modalBg.classList.remove('show'); modalBody.innerHTML=''; modalConfirm.onclick=null; }
+
+/* API */
+async function apiGet(params){
+  const url = APP_SCRIPT_URL + '?' + new URLSearchParams(params).toString();
+  const res = await fetch(url);
+  const text = await res.text();
+  try { return JSON.parse(text); } catch(e){ return { success:false, message: 'Invalid JSON: '+text }; }
+}
+
+/* Connection check */
+async function checkConn(){
+  try {
+    const r = await apiGet({ action:'checkConnection' });
+    if (r.success) setStatus('Connected to backend', true);
+    else setStatus('Connection failed: '+r.message, false);
+  } catch (err) {
+    setStatus('Connection failed: '+err.message, false);
+  }
+}
+
+/* Register/Login */
+async function registerSeller(){
+  showInlineMessage('Registering...');
+  try {
+    const r = await apiGet({ action:'register', name: regName.value.trim(), email: regEmail.value.trim(), password: regPassword.value, type:'seller' });
+    if (r.success) { showBanner('Registered. Please login.', 'success'); switchTab('login'); } else { showInlineMessage(r.message || 'Registration failed', true); showBanner(r.message || 'Registration failed', 'error'); }
+  } catch(err){ showInlineMessage('Network error: '+err.message, true); showBanner('Network error', 'error'); }
+}
+async function loginSeller(){
+  showInlineMessage('Logging in...');
+  try {
+    const r = await apiGet({ action:'login', email: loginEmail.value.trim(), password: loginPassword.value, type:'seller' });
+    if (r.success) { localStorage.setItem('sellerEmail', r.user.email); showBanner('Login success', 'success'); setTimeout(()=> location.href='seller_dashboard.html', 600); }
+    else { showInlineMessage(r.message || 'Login failed', true); showBanner(r.message || 'Login failed', 'error'); }
+  } catch(err){ showInlineMessage('Network error: '+err.message, true); showBanner('Network error', 'error'); }
+}
+
+/* Tabs */
+function switchTab(t){
+  document.getElementById('loginForm').classList.toggle('hidden', t!=='login');
+  document.getElementById('registerForm').classList.toggle('hidden', t!=='register');
+  document.getElementById('loginTab').classList.toggle('active', t==='login');
+  document.getElementById('registerTab').classList.toggle('active', t==='register');
+  clearMessage();
+}
+
+/* Init */
+document.addEventListener('DOMContentLoaded', ()=>{ checkConn(); });
+
+</script>
+</body>
+</html>

@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Seller — Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root{ --accent:#059669; --muted:#6b7280; }
+    body{ font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto; background:linear-gradient(180deg,#f7ffef,#f0fff4); min-height:100vh; margin:0; }
+    header{ background: linear-gradient(90deg,#10b981,#059669); color:white; }
+    .card{ background:white; border-radius:12px; padding:16px; box-shadow:0 10px 30px rgba(11,15,20,0.06); }
+    .modal-bg {position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(2,6,23,0.45); z-index:60; padding:20px; opacity:0; pointer-events:none; transition:opacity .18s ease;}
+    .modal-bg.show{opacity:1; pointer-events:auto;}
+    .modal-card{width:100%; max-width:720px; border-radius:12px; overflow:hidden; transform:translateY(8px); transition:transform .18s ease;}
+    .banner {position:fixed; left:50%; transform:translateX(-50%); top:18px; z-index:70; max-width:720px; width:calc(100% - 48px); display:flex; gap:12px; align-items:center; padding:10px 14px; border-radius:10px; box-shadow:0 8px 30px rgba(2,6,23,0.08); opacity:0; pointer-events:none; transition:all .28s ease;}
+    .banner.show{opacity:1; top:28px; pointer-events:auto;}
+    .banner.success{background:linear-gradient(90deg,#ecfdf5,#dcfce7); border:1px solid rgba(16,185,129,0.12); color:#16a34a;}
+    .banner.error{background:linear-gradient(90deg,#fff1f2,#fee2e2); border:1px solid rgba(220,38,38,0.08); color:#dc2626;}
+    /* product card */
+    .veg-card{ border-radius:12px; overflow:hidden; background:white; box-shadow:0 8px 20px rgba(11,15,20,0.04); display:flex; flex-direction:column; height:100%; }
+    .veg-img { width:100%; display:block; background:linear-gradient(180deg,#fff,#f8fff8); }
+    .veg-body{ padding:12px; display:flex; flex-direction:column; gap:8px; flex:1; }
+    .veg-foot{ display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-top:1px solid #f3f4f6; }
+    .orders-list{ display:flex; flex-direction:column; gap:10px; max-height:420px; overflow:auto; }
+    .grid { display:grid; gap:12px; grid-template-columns: repeat(1,1fr); }
+    @media (min-width:640px){ .grid { grid-template-columns: repeat(2,1fr); } }
+    @media (min-width:1024px){ .grid { grid-template-columns: repeat(3,1fr); } }
+    .action-btn{ padding:8px 10px; border-radius:8px; font-weight:600; font-size:14px; }
+    .btn-small { padding:6px 10px; border-radius:8px; font-size:13px; }
+    @media (max-width:420px){
+      .veg-foot { flex-direction:column; gap:8px; align-items:stretch; }
+      .veg-foot > div:last-child { display:flex; justify-content:flex-end; }
+    }
+
+    /* AI full-screen popup */
+    #aiPopup { position: fixed; inset: 0; z-index: 120; background: #fff; display:none; flex-direction:column; }
+    #aiPopup.show { display:flex; }
+    #aiHeader { background: linear-gradient(90deg,#10b981,#059669); color: white; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; }
+    #aiBody { flex:1; overflow:auto; padding:12px; background:#f7fff7; }
+    #aiInputBar { padding:10px; border-top:1px solid #e6f4ea; display:flex; gap:8px; }
+    .chat-msg { max-width:80%; padding:10px 12px; border-radius:12px; margin-bottom:10px; white-space:pre-wrap; }
+    .chat-user { background: #e6fff7; margin-left:auto; }
+    .chat-bot { background: white; border:1px solid #e6f4ea; margin-right:auto; }
+    .ai-table { width:100%; border-collapse:collapse; margin-top:8px; }
+    .ai-table th, .ai-table td { border:1px solid #e6f4ea; padding:8px; text-align:left; font-size:14px; }
+    .ai-query-list { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    .chip { background:white; border:1px solid #e6f4ea; padding:8px 10px; border-radius:999px; font-size:13px; cursor:pointer; }
+    .chip:hover{ background:#f0fff0; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <div id="banner" class="banner" role="status" aria-live="polite"></div>
+
+  <header class="p-4">
+    <div class="max-w-5xl mx-auto flex justify-between items-center">
+      <h1 class="text-xl font-semibold">My Inventory</h1>
+      <div>
+        <span id="userEmail" class="mr-4 text-sm"></span>
+        <button id="logout" class="px-3 py-1 rounded-lg bg-white/10">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto p-4 grid gap-6">
+    <section class="card">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+        <div class="flex items-center gap-3 w-full sm:w-auto">
+          <input id="searchInput" class="p-3 border rounded-lg w-full sm:w-64" placeholder="Search item or vendor" />
+          <button id="refreshBtn" class="px-4 py-2 rounded-lg border btn-small">Refresh</button>
+        </div>
+        <div class="flex gap-2">
+          <button id="addBtn" class="px-4 py-2 rounded-lg bg-green-600 text-white">Add Item</button>
+          <button id="ordersToggle" class="px-4 py-2 rounded-lg border">Toggle Orders</button>
+          <button id="openAi" class="px-4 py-2 rounded-lg bg-blue-600 text-white">AI Market</button>
+        </div>
+      </div>
+
+      <!-- Grid of vegetable/product cards -->
+      <div id="inventoryGrid" class="grid"></div>
+    </section>
+
+    <!-- Orders panel (collapsible) -->
+    <section id="ordersSection" class="card hidden">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-lg font-semibold">Orders</h2>
+        <div class="flex gap-2">
+          <button id="refreshOrders" class="px-3 py-1 rounded border btn-small">Refresh</button>
+          <button id="collapseOrders" class="px-3 py-1 rounded border btn-small">Collapse</button>
+        </div>
+      </div>
+      <div id="ordersList" class="orders-list">
+        Loading orders...
+      </div>
+    </section>
+
+    <section class="card">
+      <h3 class="font-semibold mb-3">AI Market Insight (Quick)</h3>
+      <div class="flex gap-2">
+        <input id="marketQuery" class="w-full p-3 border rounded" placeholder="Type vegetable name (e.g., Tomato)" />
+        <button id="marketBtnQuick" class="px-4 py-2 rounded-lg bg-blue-600 text-white">Get</button>
+      </div>
+      <div id="marketBoxQuick" class="mt-3 p-3 bg-blue-50 rounded hidden"><div id="marketOutputQuick"></div></div>
+    </section>
+  </main>
+
+  <!-- Add/Edit modal -->
+  <div id="modal" class="modal-bg" aria-hidden="true">
+    <div class="modal-card bg-white p-6 rounded-xl">
+      <h3 id="modalTitle" class="font-semibold mb-2">Add Item</h3>
+      <div class="space-y-2">
+        <input id="itemName" class="w-full p-3 border rounded" placeholder="Item name (e.g., Tomato)" />
+        <input id="itemImage" class="w-full p-3 border rounded" placeholder="Image URL (optional)" />
+        <input id="itemStock" type="number" class="w-full p-3 border rounded" placeholder="Stock" />
+        <input id="itemPrice" type="number" class="w-full p-3 border rounded" placeholder="Price (INR)" />
+      </div>
+      <div class="flex justify-end gap-2 mt-3">
+        <button id="cancel" class="px-4 py-2 rounded-lg border">Cancel</button>
+        <button id="save" class="px-4 py-2 rounded-lg bg-green-600 text-white">Save</button>
+      </div>
+      <input id="editId" type="hidden" />
+    </div>
+  </div>
+
+  <!-- Confirm modal for Delete -->
+  <div id="confirmModal" class="modal-bg" aria-hidden="true">
+    <div class="modal-card bg-white p-6 rounded-xl">
+      <h3 id="confirmTitle" class="font-semibold mb-2">Confirm</h3>
+      <div id="confirmBody" class="text-sm text-gray-700 mb-3"></div>
+      <div class="flex justify-end gap-2">
+        <button id="confirmCancel" class="px-4 py-2 rounded-lg border">Cancel</button>
+        <button id="confirmYes" class="px-4 py-2 rounded-lg bg-red-600 text-white">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Market full-screen popup -->
+  <div id="aiPopup" aria-hidden="true">
+    <div id="aiHeader">
+      <div style="font-weight:600;">AI Market Assistant</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button id="aiExamplesBtn" class="px-3 py-1 rounded bg-white/10 text-white">Examples</button>
+        <button id="closeAi" class="px-3 py-1 rounded bg-white/10 text-white">Close</button>
+      </div>
+    </div>
+
+    <div id="aiBody">
+      <div id="chatList" style="display:flex;flex-direction:column;"></div>
+
+      <div style="margin-top:12px;">
+        <div class="ai-query-list" id="aiChips">
+          <div class="chip" data-val="Tomato">Tomato</div>
+          <div class="chip" data-val="Onion">Onion</div>
+          <div class="chip" data-val="Potato">Potato</div>
+          <div class="chip" data-val="Coriander">Coriander</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="aiInputBar">
+      <input id="aiInput" class="flex-1 p-3 border rounded" placeholder="Ask about a vegetable or market price..." />
+      <button id="aiSend" class="px-4 py-2 rounded bg-white text-green-700 font-semibold">Ask</button>
+    </div>
+  </div>
+
+<script>
+/* ---------- Config ---------- */
+const APP_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw5KjrbNXHZOcQQRaxKKwhPKnR3OWVsJQ8MZm_3qi-OWh-YM2p7RhGdJaPCXnRzY1sOzw/exec';
+
+/* ---------- Helpers ---------- */
+function showBanner(text, type='success', timeout=3200){
+  const b = document.getElementById('banner');
+  b.className = 'banner '+(type==='success'?'success':'error')+' show';
+  b.innerHTML = `<div class="text-sm font-medium">${text}</div>`;
+  if(timeout) setTimeout(()=>{ b.className='banner'; }, timeout);
+}
+
+function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+async function apiGet(params){
+  const url = APP_SCRIPT_URL + '?' + new URLSearchParams(params).toString();
+  const res = await fetch(url);
+  const txt = await res.text();
+  try { return JSON.parse(txt); } catch(e){ return { success:false, message:'Invalid JSON: '+txt }; }
+}
+
+/* ---------- Placeholder image ---------- */
+function placeholderSvgDataUri(){
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'><rect width='100%' height='100%' fill='%23f3f4f6'/><g transform='translate(60,60)' fill='%2399a7a1'><rect x='0' y='0' width='120' height='120' rx='10'/><rect x='140' y='0' width='120' height='120' rx='10'/><rect x='0' y='140' width='120' height='120' rx='10'/></g></svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+
+function productImageHtml(url, name){
+  if(url && url.trim()){
+    return `<img src="${escapeHtml(url)}" alt="${escapeHtml(name)}" class="object-cover w-full h-full" onerror="this.src='${placeholderSvgDataUri()}'" />`;
+  } else {
+    return `<img src="${placeholderSvgDataUri()}" alt="placeholder" class="w-full h-full object-cover" />`;
+  }
+}
+
+/* ---------- Inventory ---------- */
+async function loadInventory(){
+  const ownerEmail = localStorage.getItem('sellerEmail') || '';
+  const q = document.getElementById('searchInput').value.trim();
+  const grid = document.getElementById('inventoryGrid');
+  grid.innerHTML = 'Loading...';
+  try {
+    const r = await apiGet({ action:'fetchInventory', ownerEmail, search: q });
+    if(!r.success){ grid.innerHTML = '<div class="text-red-600">Failed to load</div>'; return; }
+    const items = r.items || [];
+    if(items.length === 0){ grid.innerHTML = '<div class="text-sm text-gray-500">No items yet.</div>'; return; }
+
+    grid.innerHTML = '';
+    items.forEach(it=>{
+      const div = document.createElement('div');
+      div.className = 'veg-card';
+
+      div.innerHTML = `
+        <div class="veg-img aspect-square w-full overflow-hidden bg-gray-100 flex items-center justify-center">
+          ${productImageHtml(it.image, it.item)}
+        </div>
+        <div class="veg-body">
+          <div class="flex justify-between items-start">
+            <div style="min-width:0">
+              <div class="font-medium text-sm truncate">${escapeHtml(it.item)}</div>
+              <div class="text-xs text-gray-500 mt-1">Stock: ${escapeHtml(it.stock || 0)}</div>
+            </div>
+            <div class="text-lg font-semibold text-green-700">₹${escapeHtml(it.price || 0)}</div>
+          </div>
+          <div class="mt-2 text-xs text-gray-500 truncate">${escapeHtml(it.ownerEmail || '')}</div>
+        </div>
+        <div class="veg-foot">
+          <div class="flex gap-2">
+            <button class="action-btn border btn-small" data-edit="${escapeHtml(it.id)}">Edit</button>
+            <button class="action-btn border text-red-600 btn-small" data-del="${escapeHtml(it.id)}" data-name="${escapeHtml(it.item)}">Delete</button>
+          </div>
+          <div>
+            <button class="px-3 py-1 rounded-md bg-rose-600 text-white btn-small" data-order="${escapeHtml(it.id)}">View Orders</button>
+          </div>
+        </div>
+      `;
+
+      // handlers
+      div.querySelector('[data-edit]')?.addEventListener('click', () => openModal(it));
+      // delete opens confirm modal
+      div.querySelector('[data-del]')?.addEventListener('click', (e) => openConfirmDelete({ id: it.id, item: it.item }));
+      div.querySelector('[data-order]')?.addEventListener('click', () => filterOrdersByItem(it.item));
+
+      grid.appendChild(div);
+    });
+  } catch(err){ grid.innerHTML = '<div class="text-red-600">Network error</div>'; }
+}
+
+/* ---------- Save / Delete Inventory ---------- */
+async function saveItem(){
+  const ownerEmail = localStorage.getItem('sellerEmail') || '';
+  if(!ownerEmail){ showBanner('Please login', 'error'); window.location.href='seller_auth.html'; return; }
+  const id = document.getElementById('editId').value || '';
+  const item = document.getElementById('itemName').value.trim();
+  const image = document.getElementById('itemImage').value.trim();
+  const stock = Number(document.getElementById('itemStock').value) || 0;
+  const price = Number(document.getElementById('itemPrice').value) || 0;
+  if(!item){ showBanner('Enter item name', 'error'); return; }
+  closeModal();
+  try {
+    const r = await apiGet({ action:'saveInventory', ownerEmail, id, item, image, stock, price });
+    if(!r.success) showBanner(r.message || 'Save failed', 'error'); else { showBanner('Saved', 'success'); loadInventory(); }
+  } catch(err){ showBanner('Network error: '+err.message, 'error'); }
+}
+
+/* Delete confirm modal */
+let _deleteTargetId = null;
+function openConfirmDelete(obj){
+  _deleteTargetId = obj.id;
+  document.getElementById('confirmTitle').textContent = 'Delete Item';
+  document.getElementById('confirmBody').innerHTML = `Permanently delete <strong>${escapeHtml(obj.item)}</strong>?`;
+  document.getElementById('confirmModal').classList.add('show');
+}
+document.getElementById('confirmCancel').addEventListener('click', ()=> {
+  document.getElementById('confirmModal').classList.remove('show');
+  _deleteTargetId = null;
+});
+document.getElementById('confirmYes').addEventListener('click', async ()=>{
+  if(!_deleteTargetId){ document.getElementById('confirmModal').classList.remove('show'); return; }
+  const ownerEmail = localStorage.getItem('sellerEmail') || '';
+  try {
+    const r = await apiGet({ action:'deleteInventory', ownerEmail, id: _deleteTargetId });
+    if(!r.success) showBanner(r.message || 'Delete failed', 'error'); else { showBanner('Deleted', 'success'); loadInventory(); }
+  } catch(err){ showBanner('Network error: '+err.message, 'error'); }
+  document.getElementById('confirmModal').classList.remove('show');
+  _deleteTargetId = null;
+});
+
+/* hook save/cancel modal buttons */
+document.getElementById('save').addEventListener('click', saveItem);
+document.getElementById('cancel').addEventListener('click', ()=> document.getElementById('modal').classList.remove('show'));
+
+/* ---------- Orders ---------- */
+async function loadOrders(){
+  const ownerEmail = localStorage.getItem('sellerEmail') || '';
+  const list = document.getElementById('ordersList');
+  list.innerHTML = 'Loading orders...';
+  try {
+    const r = await apiGet({ action:'fetchOrders', sellerEmail: ownerEmail });
+    if(!r.success){ list.innerHTML = '<div class="text-red-600">Failed to load orders</div>'; return; }
+    const orders = r.orders || [];
+    if(!orders.length){ list.innerHTML = '<div class="text-sm text-gray-500">No orders yet.</div>'; return; }
+    list.innerHTML = '';
+    orders.forEach(o=>{
+      const item = document.createElement('div');
+      item.className = 'p-3 border rounded flex items-start justify-between gap-3';
+      const when = new Date(o.createdAt || Date.now());
+      item.innerHTML = `
+        <div class="flex-1">
+          <div class="text-sm font-medium">${escapeHtml(o.buyerName || o.buyerEmail || 'Restaurant')}</div>
+          <div class="text-xs text-gray-500">Item: ${escapeHtml(o.item)} · Qty: ${escapeHtml(o.quantity || 0)}</div>
+          <div class="text-xs text-gray-400 mt-1">${when.toLocaleString()}</div>
+          <div class="text-xs text-gray-600 mt-2">${escapeHtml(o.note || '')}</div>
+        </div>
+        <div class="flex flex-col items-end gap-2">
+          <div class="text-sm font-semibold">${escapeHtml(o.status || 'pending')}</div>
+          <div class="flex gap-1">
+            <button class="px-2 py-1 rounded border btn-small" data-id="${escapeHtml(o.id)}" data-action="accept">Accept</button>
+            <button class="px-2 py-1 rounded border btn-small" data-id="${escapeHtml(o.id)}" data-action="shipped">Shipped</button>
+            <button class="px-2 py-1 rounded border text-red-600 btn-small" data-id="${escapeHtml(o.id)}" data-action="cancel">Cancel</button>
+          </div>
+        </div>
+      `;
+      item.querySelectorAll('button[data-action]').forEach(btn=>{
+        btn.addEventListener('click', async ()=>{
+          const action = btn.getAttribute('data-action');
+          const id = btn.getAttribute('data-id');
+          try {
+            const rr = await apiGet({ action:'updateOrderStatus', sellerEmail: localStorage.getItem('sellerEmail'), orderId: id, status: action });
+            if(rr.success) { showBanner('Order updated', 'success'); loadOrders(); } else showBanner(rr.message || 'Update failed', 'error');
+          } catch(err){ showBanner('Network error: '+err.message, 'error'); }
+        });
+      });
+      list.appendChild(item);
+    });
+  } catch(err){ list.innerHTML = '<div class="text-red-600">Network error</div>'; }
+}
+
+/* ---------- Quick Market (main page) ---------- */
+document.getElementById('marketBtnQuick').addEventListener('click', async ()=>{
+  const q = document.getElementById('marketQuery').value.trim();
+  if(!q){ showBanner('Enter a vegetable name', 'error'); return; }
+  document.getElementById('marketBoxQuick').classList.remove('hidden');
+  document.getElementById('marketOutputQuick').innerHTML = 'Fetching...';
+  try {
+    const r = await apiGet({ action:'getMarketInsight', query: q });
+    if(!r.success){ document.getElementById('marketOutputQuick').innerHTML = '<div class="text-red-600">Failed</div>'; return; }
+    const rows = parseAiPricesToRows(r.text || r.message || '');
+    renderAiTable('marketOutputQuick', rows);
+  } catch(err){ document.getElementById('marketOutputQuick').innerHTML = '<div class="text-red-600">Network error</div>'; }
+});
+
+/* ---------- AI Popup ---------- */
+const aiPopup = document.getElementById('aiPopup');
+const aiInput = document.getElementById('aiInput');
+const aiSend = document.getElementById('aiSend');
+const chatList = document.getElementById('chatList');
+const aiChips = document.getElementById('aiChips');
+
+function openAi(){ aiPopup.classList.add('show'); aiInput.focus(); }
+function closeAi(){ aiPopup.classList.remove('show'); aiInput.value=''; chatList.innerHTML=''; }
+
+document.getElementById('openAi').addEventListener('click', ()=> openAi());
+document.getElementById('closeAi').addEventListener('click', ()=> closeAi());
+aiSend.addEventListener('click', ()=> aiAsk());
+aiInput.addEventListener('keydown', (e)=> { if(e.key==='Enter') aiAsk(); });
+aiChips.querySelectorAll('.chip').forEach(c=> c.addEventListener('click', ()=> { aiInput.value = c.getAttribute('data-val'); aiAsk(); }));
+
+async function aiAsk(){
+  const q = aiInput.value.trim();
+  if(!q){ showBanner('Enter a question', 'error'); return; }
+  appendChat('user', q);
+  appendChat('bot', 'Fetching market insight...');
+  try {
+    const r = await apiGet({ action:'getMarketInsight', query: q });
+    removeLastBotPlaceholder();
+    if(!r.success){ appendChat('bot', 'AI failed: ' + (r.message||'Unknown')); return; }
+    appendChat('bot', r.text || r.message || 'No response');
+    const rows = parseAiPricesToRows(r.text || r.message || '');
+    // add table under last bot message
+    renderAiTableInChat(rows);
+  } catch(err){ removeLastBotPlaceholder(); appendChat('bot', 'Network error: '+err.message); }
+}
+
+function appendChat(kind, text){
+  const d = document.createElement('div');
+  d.className = 'chat-msg ' + (kind==='user' ? 'chat-user' : 'chat-bot');
+  d.textContent = text;
+  chatList.appendChild(d);
+  chatList.scrollTop = chatList.scrollHeight;
+}
+
+function removeLastBotPlaceholder(){
+  const msgs = chatList.querySelectorAll('.chat-msg.chat-bot');
+  if(msgs.length) msgs[msgs.length-1].remove();
+}
+
+/* ---------- Improved price parser: returns only veg/min/max/unit ---------- */
+function parseAiPricesToRows(text){
+  if(!text) return [];
+  const rows = [];
+  // split by lines, commas, semicolons, or sentence punctuation
+  const lines = text.split(/[\n,;·•]|\.|\n/).map(l => l.trim()).filter(Boolean);
+
+  // regex to capture: name ... number [ - to ] number [unit]
+  const regex = /([A-Za-z\u00C0-\u024F\-\s]+?)\s*(?:[:\-–—])?\s*₹?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:to|[-–—])?\s*₹?\s*([0-9]+(?:\.[0-9]+)?)?\s*(kg|\/kg|per kg|KG|Kg|g|gm|kg\.)?/i;
+
+  lines.forEach(line => {
+    const m = line.match(regex);
+    if (m) {
+      rows.push({
+        veg: (m[1] || '').trim(),
+        min: m[2] || '',
+        max: m[3] || (m[2] || ''),
+        unit: (m[4] || 'kg').replace("/", "").replace("per ", "").replace(".", "")
+      });
+    }
+  });
+
+  // If nothing parsed, try to find single numeric range in entire text
+  if(rows.length === 0){
+    const overall = text.match(/₹?\s*([0-9]+(?:\.[0-9]+)?)\s*[-–—to]+\s*₹?\s*([0-9]+(?:\.[0-9]+)?)/i);
+    if(overall){
+      rows.push({ veg:'Unknown', min: overall[1], max: overall[2], unit:'kg' });
+    } else {
+      // fallback empty row to indicate no structured data
+      rows.push({ veg:'Unknown', min:'', max:'', unit:'' });
+    }
+  }
+
+  return rows;
+}
+
+/* ---------- Render AI table for quick view ---------- */
+function renderAiTable(containerId, rows){
+  const container = document.getElementById(containerId);
+  let html = `
+    <table class="ai-table">
+      <thead>
+        <tr><th>Vegetable</th><th>Min</th><th>Max</th><th>Unit</th></tr>
+      </thead>
+      <tbody>
+  `;
+  rows.forEach(r=>{
+    html += `<tr><td>${escapeHtml(r.veg)}</td><td>${escapeHtml(r.min)}</td><td>${escapeHtml(r.max)}</td><td>${escapeHtml(r.unit)}</td></tr>`;
+  });
+  html += `</tbody></table>`;
+  container.innerHTML = html;
+}
+
+/* ---------- Render AI table in chat (under last bot message) ---------- */
+function renderAiTableInChat(rows){
+  const msgs = chatList.querySelectorAll('.chat-msg.chat-bot');
+  if(!msgs.length) return;
+  const lastBot = msgs[msgs.length-1];
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = buildAiTableHtml(rows);
+  lastBot.appendChild(wrapper);
+  chatList.scrollTop = chatList.scrollHeight;
+}
+
+function buildAiTableHtml(rows){
+  let html = `<div style="margin-top:10px;overflow:auto;"><table class="ai-table"><thead><tr><th>Vegetable</th><th>Min</th><th>Max</th><th>Unit</th></tr></thead><tbody>`;
+  rows.forEach(r=>{
+    html += `<tr><td>${escapeHtml(r.veg)}</td><td>${escapeHtml(r.min)}</td><td>${escapeHtml(r.max)}</td><td>${escapeHtml(r.unit)}</td></tr>`;
+  });
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+/* ---------- Init & wiring ---------- */
+document.addEventListener('DOMContentLoaded', ()=>{
+  const email = localStorage.getItem('sellerEmail'); if(!email) window.location.href='seller_auth.html';
+  document.getElementById('userEmail').textContent = email;
+  loadInventory();
+  loadOrders();
+
+  // search, refresh, add, orders toggle
+  document.getElementById('refreshBtn').addEventListener('click', loadInventory);
+  document.getElementById('addBtn').addEventListener('click', ()=> { document.getElementById('modal').classList.add('show'); });
+  document.getElementById('ordersToggle').addEventListener('click', ()=> document.getElementById('ordersSection').classList.toggle('hidden'));
+  document.getElementById('refreshOrders').addEventListener('click', loadOrders);
+  document.getElementById('collapseOrders').addEventListener('click', ()=> document.getElementById('ordersSection').classList.add('hidden'));
+
+  // quick search if pressing Enter in the search input
+  document.getElementById('searchInput').addEventListener('keydown', (e)=> { if(e.key==='Enter') loadInventory(); });
+
+  // quick market enter key
+  document.getElementById('marketQuery').addEventListener('keydown', (e)=> { if(e.key==='Enter') document.getElementById('marketBtnQuick').click(); });
+});
+</script>
+</body>
+</html>

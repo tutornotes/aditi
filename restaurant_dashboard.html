@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+  <title>Restaurant — Dashboard (Mobile Optimized)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    :root {
+      --accent: #b91c1c;
+      --muted: #6b7280;
+    }
+
+    body {
+      font-family: Inter, system-ui, sans-serif;
+      background: #fff7f7;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    header {
+      background: linear-gradient(90deg, #ef4444, #b91c1c);
+      color: white;
+    }
+
+    /* PRODUCT CARD — MOBILE FIRST */
+    .product {
+      background: white;
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #f2f2f2;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.05);
+      transition: transform .25s ease;
+    }
+
+    .prod-media {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      background: #f2f2f2;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    .prod-media img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .prod-body {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .prod-actions {
+      padding: 12px;
+      display: flex;
+      gap: 8px;
+      flex-direction: column;
+    }
+
+    .prod-btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    /* BANNER */
+    .banner {
+      position: fixed;
+      left: 50%;
+      top: 18px;
+      transform: translateX(-50%);
+      padding: 10px 14px;
+      border-radius: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: all .3s ease;
+      z-index: 200;
+      font-size: 14px;
+    }
+
+    .banner.show { opacity: 1; top: 30px; pointer-events: auto; }
+    .banner.success { background: #e6fff0; color: #059669; border: 1px solid #a7f3d0; }
+    .banner.error   { background: #ffe8ea; color: #b91c1c; border: 1px solid #fecdd3; }
+
+    /* CART BOTTOM SHEET — MOBILE DESIGN */
+    #cartDrawer {
+      position: fixed;
+      left: 0;
+      bottom: -100%;
+      width: 100%;
+      max-height: 90vh;
+      background: white;
+      box-shadow: 0 -6px 20px rgba(0,0,0,0.25);
+      border-radius: 16px 16px 0 0;
+      z-index: 150;
+      transition: bottom .35s ease;
+      display: flex;
+      flex-direction: column;
+    }
+    #cartDrawer.show { bottom: 0; }
+
+    #drawerOverlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 140;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .3s ease;
+    }
+    #drawerOverlay.show { opacity: 1; pointer-events: auto; }
+
+    /* CHATBOT FULLSCREEN */
+    #chatPopup {
+      position: fixed;
+      inset: 0;
+      background: white;
+      z-index: 200;
+      display: none;
+      flex-direction: column;
+    }
+
+    #chatPopup.show { display: flex; }
+
+    #chatWindow {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+      background: #fafafa;
+    }
+
+    .msg {
+      padding: 10px 14px;
+      border-radius: 14px;
+      max-width: 80%;
+      margin-bottom: 12px;
+      white-space: pre-line;
+    }
+
+    .msg.user { background: #ffe1e1; margin-left: auto; }
+    .msg.bot { background: #ffffff; border: 1px solid #eee; margin-right: auto; }
+
+    #chatInputBar {
+      padding: 12px;
+      border-top: 1px solid #ddd;
+      display: flex;
+      gap: 8px;
+    }
+
+    #chatSendBtn {
+      background: #b91c1c;
+      color: white;
+      padding: 0 20px;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+
+<body>
+<!-- BANNER -->
+<div id="banner" class="banner"></div>
+
+<!-- HEADER -->
+<header class="p-4 flex justify-between items-center">
+  <div class="text-lg font-semibold">Chef's Panel</div>
+
+  <div class="flex gap-2 items-center">
+    <button id="openChatbot" class="px-3 py-2 bg-white/20 rounded-lg text-sm">AI Chat</button>
+    <button id="openCartBtn" class="px-3 py-2 bg-white/20 rounded-lg text-sm">
+      Cart <span id="cartCount">(0)</span>
+    </button>
+    <button id="logout" class="px-3 py-1 bg-white/20 rounded-lg text-sm">Logout</button>
+  </div>
+</header>
+
+<div class="p-4 font-medium text-sm text-gray-600" id="userEmail"></div>
+
+<!-- MAIN CONTENT -->
+<main class="p-4 grid gap-6">
+
+  <!-- SEARCH -->
+  <section class="card">
+    <div class="flex gap-2 mb-4">
+      <input id="searchInput" class="p-3 border rounded-lg w-full" placeholder="Search item or seller"/>
+      <button id="searchBtn" class="px-4 py-2 rounded-lg border">Go</button>
+    </div>
+
+    <!-- PRODUCT LIST (1 PER ROW MOBILE) -->
+    <div id="marketplace" class="flex flex-col gap-4"></div>
+  </section>
+</main>
+
+<!-- CART BOTTOM SHEET -->
+<div id="drawerOverlay"></div>
+
+<div id="cartDrawer">
+  <div class="p-4 border-b flex justify-between items-center">
+    <div class="text-lg font-semibold">Your Cart</div>
+    <button id="closeCart" class="text-xl text-red-600">&times;</button>
+  </div>
+
+  <div id="cartItems" class="flex-1 overflow-y-auto p-4"></div>
+
+  <div class="p-4 border-t">
+    <div class="flex justify-between">
+      <span class="font-medium">Total:</span>
+      <span id="cartTotal" class="font-semibold text-green-700">₹0</span>
+    </div>
+
+    <button id="checkoutBtn"
+      class="w-full py-3 bg-green-600 text-white rounded-lg mt-3">
+      Checkout
+    </button>
+  </div>
+</div>
+
+<!-- FULLSCREEN CHATBOT -->
+<div id="chatPopup">
+  <div class="p-4 text-white bg-red-600 flex justify-between items-center">
+    <strong>AI Recipe Assistant</strong>
+    <button id="closeChatbot" class="text-xl">&times;</button>
+  </div>
+
+  <div id="chatWindow"></div>
+
+  <div id="chatInputBar">
+    <input id="chatInput" class="flex-1 border rounded-lg p-3" placeholder="Ask something..."/>
+    <button id="chatSendBtn">Send</button>
+  </div>
+</div>
+
+<script>
+/* --- API CONFIG --- */
+const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxR2-nQ1gmDWZIgJh10ek-lCiSr7CzyYtuQmTxS6okOg4BDIx9GwqGo0i0EBOX8i-92Wg/exec";
+
+const apiGet = async (params)=>{
+  const res = await fetch(APP_SCRIPT_URL + "?" + new URLSearchParams(params));
+  const txt = await res.text();
+  try { return JSON.parse(txt); }
+  catch { return { success:false, message:txt }; }
+};
+
+/* --- UTILITIES --- */
+const escapeHtml = s => String(s||"")
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+  .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+function placeholderImg(){
+  return `data:image/svg+xml;utf8,${encodeURIComponent(
+    "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'><rect width='100%' height='100%' fill='#f3f3f3'/></svg>"
+  )}`;
+}
+
+function showBanner(msg, type="success") {
+  const b = document.getElementById("banner");
+  b.textContent = msg;
+  b.className = `banner ${type} show`;
+  setTimeout(()=> b.className="banner", 2500);
+}
+
+/* --- LOAD INVENTORY --- */
+async function loadInventory(){
+  const marketplace = document.getElementById("marketplace");
+  marketplace.innerHTML = "Loading...";
+
+  const r = await apiGet({ action:"fetchInventory" });
+
+  if(!r.success) return marketplace.innerHTML="Error loading";
+
+  if(!r.items.length) return marketplace.innerHTML = "<div>No items found.</div>";
+
+  marketplace.innerHTML="";
+
+  r.items.forEach(it=>{
+    const img = it.image ? escapeHtml(it.image) : placeholderImg();
+
+    const card = document.createElement("div");
+    card.className = "product";
+
+    card.innerHTML = `
+      <div class="prod-media">
+        <img src="${img}" onerror="this.src='${placeholderImg()}'">
+      </div>
+
+      <div class="prod-body">
+        <div class="text-base font-semibold truncate">${escapeHtml(it.item)}</div>
+        <div class="text-xs text-gray-500">${escapeHtml(it.ownerEmail || "")}</div>
+        <div class="text-sm text-gray-500">Stock: ${escapeHtml(it.stock)}</div>
+        <div class="text-xl font-bold text-red-600">₹${escapeHtml(it.price)}</div>
+      </div>
+
+      <div class="prod-actions">
+        <button class="prod-btn bg-gray-800 text-white btn-order"
+          data-item="${escapeHtml(it.item)}"
+          data-price="${escapeHtml(it.price)}"
+          data-seller="${escapeHtml(it.ownerEmail)}">
+          Order Now
+        </button>
+
+        <button class="prod-btn bg-red-600 text-white btn-add"
+          data-item="${escapeHtml(it.item)}"
+          data-price="${escapeHtml(it.price)}"
+          data-seller="${escapeHtml(it.ownerEmail)}">
+          Add to Cart
+        </button>
+      </div>
+    `;
+
+    card.querySelector(".btn-add").onclick = ()=> addToCart(it);
+    card.querySelector(".btn-order").onclick = ()=> orderItem(it);
+
+    marketplace.appendChild(card);
+  });
+}
+
+/* --- CART LOGIC --- */
+let CART = [];
+
+function addToCart(it){
+  const exist = CART.find(p => p.item===it.item);
+  if(exist) exist.qty++;
+  else CART.push({ ...it, qty:1 });
+
+  updateCartUI();
+  showBanner("Added to cart");
+}
+
+function updateCartUI(){
+  document.getElementById("cartCount").textContent =
+    "(" + CART.reduce((a,b)=>a+b.qty, 0) + ")";
+}
+
+function renderCart(){
+  const box = document.getElementById("cartItems");
+  if(!CART.length) return box.innerHTML="<div>Cart is empty</div>";
+
+  box.innerHTML="";
+  CART.forEach((c,i)=>{
+    const row = document.createElement("div");
+    row.className="p-3 border rounded mb-3 flex justify-between items-center";
+
+    row.innerHTML = `
+      <div>
+        <div class="font-semibold">${escapeHtml(c.item)}</div>
+        <div class="text-xs">${c.qty} × ₹${c.price}</div>
+      </div>
+
+      <div class="flex gap-2">
+        <button data-dec="${i}" class="px-2 border rounded">-</button>
+        <button data-inc="${i}" class="px-2 border rounded">+</button>
+        <button data-rem="${i}" class="px-2 text-red-600">×</button>
+      </div>
+    `;
+
+    row.querySelector("[data-inc]").onclick = ()=>{
+      CART[i].qty++; renderCart(); updateCartUI();
+    };
+    row.querySelector("[data-dec]").onclick = ()=>{
+      CART[i].qty>1 ? CART[i].qty-- : CART.splice(i,1);
+      renderCart(); updateCartUI();
+    };
+    row.querySelector("[data-rem]").onclick = ()=>{
+      CART.splice(i,1); renderCart(); updateCartUI();
+    };
+
+    box.appendChild(row);
+  });
+
+  document.getElementById("cartTotal").textContent =
+    "₹" + CART.reduce((a,b)=>a+b.qty*b.price, 0);
+}
+
+/* --- FULLSCREEN CART --- */
+document.getElementById("openCartBtn").onclick = ()=>{
+  renderCart();
+  document.getElementById("drawerOverlay").classList.add("show");
+  document.getElementById("cartDrawer").classList.add("show");
+};
+
+document.getElementById("closeCart").onclick = ()=>{
+  document.getElementById("drawerOverlay").classList.remove("show");
+  document.getElementById("cartDrawer").classList.remove("show");
+};
+
+/* --- ORDER ITEM --- */
+async function orderItem(it){
+  const qty = 1;
+
+  await apiGet({
+    action:"placeOrder",
+    sellerEmail:it.ownerEmail,
+    buyerEmail:localStorage.getItem("restaurantEmail"),
+    item:it.item,
+    quantity:qty
+  });
+
+  showBanner("Order placed!");
+}
+
+/* --- CHATBOT --- */
+function appendChat(type, text) {
+  const win = document.getElementById("chatWindow");
+  const div = document.createElement("div");
+  div.className = "msg " + type;
+  div.textContent = text;
+  win.appendChild(div);
+  win.scrollTop = win.scrollHeight;
+}
+
+async function sendChat(){
+  const input = document.getElementById("chatInput");
+  const q = input.value.trim();
+  if(!q) return;
+
+  appendChat("user", q);
+  input.value="";
+
+  appendChat("bot", "Thinking...");
+  const r = await apiGet({ action:"generateRecipe", prompt:q });
+
+  document.querySelectorAll(".msg.bot").forEach((m,i,arr)=>{
+    if(i === arr.length-1) m.textContent = r.text || "I couldn't generate a response.";
+  });
+}
+
+/* --- CHAT UI --- */
+document.getElementById("openChatbot").onclick = ()=>{
+  document.getElementById("chatPopup").classList.add("show");
+};
+
+document.getElementById("closeChatbot").onclick = ()=>{
+  document.getElementById("chatPopup").classList.remove("show");
+};
+
+document.getElementById("chatSendBtn").onclick = sendChat;
+
+/* --- INIT --- */
+document.addEventListener("DOMContentLoaded", ()=>{
+  const email = localStorage.getItem("restaurantEmail");
+  if(!email) location.href="restaurant_auth.html";
+
+  document.getElementById("userEmail").textContent = email;
+
+  loadInventory();
+
+  document.getElementById("searchBtn").onclick = loadInventory;
+  document.getElementById("logout").onclick = ()=>{
+    localStorage.removeItem("restaurantEmail");
+    location.href="restaurant_auth.html";
+  };
+});
+</script>
+
+</body>
+</html>
